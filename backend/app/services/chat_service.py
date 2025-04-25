@@ -1,75 +1,154 @@
 import os
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel
+from langchain.schema.document import Document
+from langchain_community.vectorstores import Chroma
 from backend.app.core.config import settings
-import numpy as np
-from typing import List, Optional
-from ..api.endpoints.file_processing import convert_text_to_vector
-async def load_context_from_file(file_path: str) -> str:
+from ..api.endpoints.file_processing import get_embedding_model
+from fastapi import HTTPException
+
+
+# Define the chat request model
+class ChatRequest(BaseModel):
+    message: str
+    context_files: Optional[List[str]] = None
+
+
+# Define the chat response model
+class ChatResponse(BaseModel):
+    response: str
+    sources: List[Dict[str, Any]] = []
+
+
+async def load_vector_db():
     """
-    Load and return the content of a text file
+    Load the existing Chroma vector database
+    """
+    chroma_dir = os.path.join(settings.UPLOAD_DIR, "chroma_db")
+
+    if not os.path.exists(chroma_dir):
+        raise HTTPException(status_code=404, detail="No documents have been uploaded yet")
+
+    try:
+        embedding_model = get_embedding_model()
+        vector_db = Chroma(
+            persist_directory=chroma_dir,
+            embedding_function=embedding_model
+        )
+        return vector_db
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load vector database: {str(e)}")
+
+
+async def find_relevant_context(query: str, k: int = 5) -> List[Document]:
+    """
+    Find the most semantically relevant context from the vector database
+
+    Args:
+        query: The user's question or message
+        k: Number of chunks to retrieve
+
+    Returns:
+        List of relevant document chunks with their metadata
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        # Load the vector database
+        vector_db = await load_vector_db()
+
+        # Search for similar documents
+        results = vector_db.similarity_search_with_score(query, k=k)
+
+        # Filter results to only include ones with reasonable similarity scores
+        relevant_docs = []
+        for doc, score in results:
+            # Lower score means higher similarity in Chroma
+            if score < 1.5:  # Adjust this threshold as needed
+                relevant_docs.append(doc)
+
+        return relevant_docs
     except Exception as e:
-        print(f"Error loading file {file_path}: {str(e)}")
+        print(f"Error finding relevant context: {str(e)}")
+        return []
+
+
+def format_context_for_prompt(relevant_docs: List[Document]) -> str:
+    """
+    Format the retrieved documents into a context string for the prompt
+    """
+    if not relevant_docs:
         return ""
 
-async def find_relevant_context(message: str, context_files: Optional[List[str]] = None, ext: str = ".txt") -> str:
+    formatted_context = "I found the following relevant information:\n\n"
+
+    for i, doc in enumerate(relevant_docs, 1):
+        source = doc.metadata.get("source", "Unknown source")
+        formatted_context += f"[{i}] From {source}:\n{doc.page_content}\n\n"
+
+    return formatted_context
+
+
+def generate_response(query: str, context: str) -> str:
     """
-    Find relevant context from uploaded files for the query
+    Generate a response based on the query and the relevant context
+
+    In a production application, this would likely call an LLM API
     """
-    all_context = ""
+    if not context:
+        return "I don't have any relevant information in my database to answer your question."
 
-    # If specific files are provided, use only those
-    if context_files:
-        for filename in context_files:
-            file_path = os.path.join(settings.UPLOAD_DIR, filename + ext)
-            if os.path.exists(file_path):
-                content = await load_context_from_file(file_path)
-
-                # TODO: TEST - find the context that is most relevant to the message
-                if message in content:
-                    all_context = content
-                    break
-
-                # all_context += content + "\n\n"
-    else:
-        # Otherwise, search through all uploaded files
-        for filename in os.listdir(settings.UPLOAD_DIR):
-            if filename.endswith(".txt"):
-                content = await load_context_from_file(os.path.join(settings.UPLOAD_DIR, filename))
-
-                # TODO: TEST - find the context that is most relevant to the message
-                if message in content:
-                    all_context = content
-                    break
-
-                # all_context += content + "\n\n"
-
-    return all_context
+    # In a real implementation, you would send the query and context to an LLM
+    # For now, we'll return a simple response
+    return f"Based on the documents I've analyzed, I can provide this information to answer your query: '{query}'\n\n{context}"
 
 
-async def find_most_relevant_context(input_message):
-    message_vector = await convert_text_to_vector(input_message)
-    vector_data = [vector_data for vector_data in os.listdir(settings.UPLOAD_DIR) if vector_data.endswith(".vector")]
-    print(vector_data)
-
-async def process_chat_message(message: str, context_files: Optional[List[str]] = None) -> str:
+async def process_chat_message(message: str, context_files: Optional[List[str]] = None) -> ChatResponse:
     """
-    Process a chat message and return a response
+    Process a chat message and return a response with relevant information from the vector database
+
+    Args:
+        message: The user's message or query
+        context_files: Optional list of specific files to search within (not used in vector search)
+
+    Returns:
+        A ChatResponse object with the answer and source information
     """
     try:
-        # Get relevant context from uploaded files. extension is .vector
+        # Find the most relevant documents using vector similarity search
+        relevant_docs = await find_relevant_context(message)
 
+        # If context_files is provided, filter results
+        if context_files:
+            relevant_docs = [doc for doc in relevant_docs if doc.metadata.get("source") in context_files]
 
-        context = await find_relevant_context(message, context_files, ".txt")
+        # Extract source information for the response
+        sources = []
+        for doc in relevant_docs:
+            source = doc.metadata.get("source", "Unknown")
+            if source and source not in [s["name"] for s in sources]:
+                sources.append({"name": source, "relevance": "high"})
 
-        # For now, return a simple response
-        # TODO: Implement actual chat processing logic
-        if context:
-            return f"I found some relevant information from the uploaded files: {context[:200]}..."
-        else:
-            return "I don't have any relevant information from the uploaded files to answer your question."
+        # Format context for prompt
+        context = format_context_for_prompt(relevant_docs)
+
+        # Generate a response
+        response_text = generate_response(message, context)
+
+        # Create and return a ChatResponse object
+        return ChatResponse(
+            response=response_text,
+            sources=sources
+        )
 
     except Exception as e:
-        raise Exception(f"Error processing chat message: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing chat message: {str(e)}")
+
+
+# Example of how to implement the chat endpoint in your router
+def create_chat_endpoint(router):
+    @router.post("/chat", response_model=ChatResponse)
+    async def chat(request: ChatRequest):
+        """
+        Process a chat message and return a response
+        """
+        response = await process_chat_message(request.message, request.context_files)
+        return response  # Return the ChatResponse object directly
