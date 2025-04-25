@@ -33,7 +33,7 @@ async def websocket_chat(websocket: WebSocket):
             answer_msg = await process_chat_message(message.text)
             
             # Send response back to client
-            response = ChatResponse(response=answer_msg)
+            response = ChatResponse(response=answer_msg.response)
             await websocket.send_text(response.json())
             
         except WebSocketDisconnect:

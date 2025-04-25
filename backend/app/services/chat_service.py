@@ -62,7 +62,7 @@ async def find_relevant_context(query: str, k: int = 5) -> List[Document]:
         relevant_docs = []
         for doc, score in results:
             # Lower score means higher similarity in Chroma
-            if score < 1.5:  # Adjust this threshold as needed
+            if score < 15:  # Adjust this threshold as needed
                 relevant_docs.append(doc)
 
         return relevant_docs
