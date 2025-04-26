@@ -6,7 +6,7 @@ from langchain_community.vectorstores import Chroma
 from backend.app.core.config import settings
 from ..api.endpoints.file_processing import get_embedding_model
 from fastapi import HTTPException
-
+import google.generativeai as genai
 
 # Define the chat request model
 class ChatRequest(BaseModel):
@@ -41,16 +41,7 @@ async def load_vector_db():
 
 
 async def find_relevant_context(query: str, k: int = 5) -> List[Document]:
-    """
-    Find the most semantically relevant context from the vector database
 
-    Args:
-        query: The user's question or message
-        k: Number of chunks to retrieve
-
-    Returns:
-        List of relevant document chunks with their metadata
-    """
     try:
         # Load the vector database
         vector_db = await load_vector_db()
@@ -72,9 +63,7 @@ async def find_relevant_context(query: str, k: int = 5) -> List[Document]:
 
 
 def format_context_for_prompt(relevant_docs: List[Document]) -> str:
-    """
-    Format the retrieved documents into a context string for the prompt
-    """
+
     if not relevant_docs:
         return ""
 
@@ -88,30 +77,16 @@ def format_context_for_prompt(relevant_docs: List[Document]) -> str:
 
 
 def generate_response(query: str, context: str) -> str:
-    """
-    Generate a response based on the query and the relevant context
 
-    In a production application, this would likely call an LLM API
-    """
     if not context:
         return "I don't have any relevant information in my database to answer your question."
 
-    # In a real implementation, you would send the query and context to an LLM
-    # For now, we'll return a simple response
+    # TODO use germini api to format
     return f"Based on the documents I've analyzed, I can provide this information to answer your query: '{query}'\n\n{context}"
 
 
 async def process_chat_message(message: str, context_files: Optional[List[str]] = None) -> ChatResponse:
-    """
-    Process a chat message and return a response with relevant information from the vector database
 
-    Args:
-        message: The user's message or query
-        context_files: Optional list of specific files to search within (not used in vector search)
-
-    Returns:
-        A ChatResponse object with the answer and source information
-    """
     try:
         # Find the most relevant documents using vector similarity search
         relevant_docs = await find_relevant_context(message)
@@ -141,14 +116,3 @@ async def process_chat_message(message: str, context_files: Optional[List[str]] 
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing chat message: {str(e)}")
-
-
-# Example of how to implement the chat endpoint in your router
-def create_chat_endpoint(router):
-    @router.post("/chat", response_model=ChatResponse)
-    async def chat(request: ChatRequest):
-        """
-        Process a chat message and return a response
-        """
-        response = await process_chat_message(request.message, request.context_files)
-        return response  # Return the ChatResponse object directly

@@ -22,7 +22,8 @@
   },
   "scripts": {
     "start": "WATCHPACK_POLLING=true react-scripts start",
-    "build": "react-scripts build && mkdir -p ../backend/www && rm -rf ../backend/www/* && cp -r build/* ../backend/www/",
+    "build": "GENERATE_SOURCEMAP=true INLINE_RUNTIME_CHUNK=false react-scripts build && mkdir -p ../backend/www && rm -rf ../backend/www/* && cp -r build/* ../backend/www/",
+    "build:dev": "cross-env NODE_ENV=development GENERATE_SOURCEMAP=true react-scripts build && mkdir -p ../backend/www && rm -rf ../backend/www/* && cp -r build/* ../backend/www/",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -47,6 +48,7 @@
   "devDependencies": {
     "@types/node": "^20.11.19",
     "@types/react": "^18.2.57",
-    "@types/react-dom": "^18.2.19"
+    "@types/react-dom": "^18.2.19",
+    "cross-env": "^7.0.3"
   }
 }

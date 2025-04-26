@@ -144,16 +144,16 @@ async def list_files():
                 detail=f"Could not list files: {str(e)}"
             )
         for filename in os.listdir(settings.UPLOAD_DIR):
-            if not filename.endswith(('.vector')):  # Skip processed files
-                file_path = os.path.join(settings.UPLOAD_DIR, filename)
-                if not os.path.exists(file_path + ".txt")  or not os.path.exists(file_path + ".vector"):
-                    continue
-                stats = os.stat(file_path)
-                files.append(FileInfo(
-                    filename=filename,
-                    size=stats.st_size,
-                    uploaded_at=datetime.fromtimestamp(stats.st_mtime)
-                ))
+            if "." not in filename:
+                continue
+            file_path = os.path.join(settings.UPLOAD_DIR, filename)
+
+            stats = os.stat(file_path)
+            files.append(FileInfo(
+                filename=filename,
+                size=stats.st_size,
+                uploaded_at=datetime.fromtimestamp(stats.st_mtime)
+            ))
         return sorted(files, key=lambda x: x.uploaded_at, reverse=True)
     except Exception as e:
         raise HTTPException(
