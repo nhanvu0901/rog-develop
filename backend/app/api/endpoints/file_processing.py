@@ -106,10 +106,10 @@ async def upload_file(file: UploadFile = File(...)):
         # Process file and extract text
         extracted_text = await process_file(file_path, file_extension)
 
-        # # Write extracted_text to text file in uploads folder
-        # text_file_path = os.path.join(settings.UPLOAD_DIR, file.filename + ".txt")
-        # async with aiofiles.open(text_file_path, "w") as text_file:
-        #     await text_file.write(extracted_text)
+        # Write extracted_text to text file in uploads folder
+        text_file_path = os.path.join(settings.UPLOAD_DIR, os.path.splitext(file.filename)[0] + ".txt")
+        async with aiofiles.open(text_file_path, "w") as text_file:
+            await text_file.write(extracted_text)
 
         # Add to vector database instead of saving vector file
         result = await convert_text_to_vector(extracted_text, file.filename)
@@ -144,7 +144,7 @@ async def list_files():
                 detail=f"Could not list files: {str(e)}"
             )
         for filename in os.listdir(settings.UPLOAD_DIR):
-            if "." not in filename:
+            if ".pdf" not in filename:
                 continue
             file_path = os.path.join(settings.UPLOAD_DIR, filename)
 

@@ -7,7 +7,7 @@ from backend.app.core.config import settings
 from ..api.endpoints.file_processing import get_embedding_model
 from fastapi import HTTPException
 import google.generativeai as genai
-
+from ..services.llm_service import setup_genai
 # Define the chat request model
 class ChatRequest(BaseModel):
     message: str
@@ -17,7 +17,7 @@ class ChatRequest(BaseModel):
 # Define the chat response model
 class ChatResponse(BaseModel):
     response: str
-    sources: List[Dict[str, Any]] = []
+
 
 
 async def load_vector_db():
@@ -40,7 +40,7 @@ async def load_vector_db():
         raise HTTPException(status_code=500, detail=f"Failed to load vector database: {str(e)}")
 
 
-async def find_relevant_context(query: str, k: int = 5) -> List[Document]:
+async def find_relevant_context(query: str, k: int = 5) -> str:
 
     try:
         # Load the vector database
@@ -49,69 +49,64 @@ async def find_relevant_context(query: str, k: int = 5) -> List[Document]:
         # Search for similar documents
         results = vector_db.similarity_search_with_score(query, k=k)
 
-        # Filter results to only include ones with reasonable similarity scores
         relevant_docs = []
         for doc, score in results:
             # Lower score means higher similarity in Chroma
             if score < 15:  # Adjust this threshold as needed
                 relevant_docs.append(doc)
 
-        return relevant_docs
+        context = "\n\n".join(content.page_content for content in relevant_docs)
+
+        prompt = f"""
+            Use the following information to answer the question accurately and comprehensively:
+
+            Context:
+            {context}
+            Instructions:
+1. If the provided context only contains tables, lists, or indexes without substantive information about the question, state that substantive information about the query isn't found in the provided context.
+2. If the query subject appears only in tables of contents, reference lists, or similar structural elements without accompanying explanatory content, mention this limitation.
+3. If you do find relevant information, provide a complete answer based on the available context.
+4. If the query subject isn't mentioned at all in the context, clearly state "The information about [query] is not found in the provided context."
+            Question: {query}
+
+            Answer:
+            """
+
+        return prompt
     except Exception as e:
         print(f"Error finding relevant context: {str(e)}")
         return []
 
 
-def format_context_for_prompt(relevant_docs: List[Document]) -> str:
 
-    if not relevant_docs:
-        return ""
-
-    formatted_context = "I found the following relevant information:\n\n"
-
-    for i, doc in enumerate(relevant_docs, 1):
-        source = doc.metadata.get("source", "Unknown source")
-        formatted_context += f"[{i}] From {source}:\n{doc.page_content}\n\n"
-
-    return formatted_context
 
 
 def generate_response(query: str, context: str) -> str:
-
-    if not context:
-        return "I don't have any relevant information in my database to answer your question."
-
-    # TODO use germini api to format
-    return f"Based on the documents I've analyzed, I can provide this information to answer your query: '{query}'\n\n{context}"
+    model = setup_genai()
+    response = model.generate_content(context)
+    return response.text
 
 
 async def process_chat_message(message: str, context_files: Optional[List[str]] = None) -> ChatResponse:
 
     try:
-        # Find the most relevant documents using vector similarity search
-        relevant_docs = await find_relevant_context(message)
+        prompt = await find_relevant_context(message)
 
-        # If context_files is provided, filter results
-        if context_files:
-            relevant_docs = [doc for doc in relevant_docs if doc.metadata.get("source") in context_files]
+        print(prompt)
+        # if context_files:
+        #     relevant_docs = [doc for doc in relevant_docs if doc.metadata.get("source") in context_files]
+        #
+        #
+        # sources = []
+        # for doc in relevant_docs:
+        #     source = doc.metadata.get("source", "Unknown")
+        #     sources.append({"name": source})
 
-        # Extract source information for the response
-        sources = []
-        for doc in relevant_docs:
-            source = doc.metadata.get("source", "Unknown")
-            if source and source not in [s["name"] for s in sources]:
-                sources.append({"name": source, "relevance": "high"})
-
-        # Format context for prompt
-        context = format_context_for_prompt(relevant_docs)
-
-        # Generate a response
-        response_text = generate_response(message, context)
-
+        response_text = generate_response(message, prompt)
+        print(response_text)
         # Create and return a ChatResponse object
         return ChatResponse(
             response=response_text,
-            sources=sources
         )
 
     except Exception as e:
