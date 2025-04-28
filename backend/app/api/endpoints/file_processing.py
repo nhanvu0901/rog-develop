@@ -26,7 +26,7 @@ def get_embedding_model():
     if _embedding_model is None:
         # Use a multilingual model that supports 50+ languages
         _embedding_model = HuggingFaceEmbeddings(
-            model_name="paraphrase-multilingual-MiniLM-L12-v2"
+            model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
         )
     return _embedding_model
 

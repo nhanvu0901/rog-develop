@@ -1,29 +1,24 @@
 import os
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
-from langchain.schema.document import Document
 from langchain_community.vectorstores import Chroma
 from backend.app.core.config import settings
 from ..api.endpoints.file_processing import get_embedding_model
 from fastapi import HTTPException
-import google.generativeai as genai
 from ..services.llm_service import setup_genai
-# Define the chat request model
+
 class ChatRequest(BaseModel):
     message: str
     context_files: Optional[List[str]] = None
 
 
-# Define the chat response model
 class ChatResponse(BaseModel):
     response: str
 
 
 
 async def load_vector_db():
-    """
-    Load the existing Chroma vector database
-    """
+
     chroma_dir = os.path.join(settings.UPLOAD_DIR, "chroma_db")
 
     if not os.path.exists(chroma_dir):
@@ -40,19 +35,19 @@ async def load_vector_db():
         raise HTTPException(status_code=500, detail=f"Failed to load vector database: {str(e)}")
 
 
-async def find_relevant_context(query: str, k: int = 5) -> str:
-
+async def find_relevant_context(query: str, k: int = 8) -> str:
+    #k the number of recommendations you want to show
     try:
-        # Load the vector database
+
         vector_db = await load_vector_db()
 
-        # Search for similar documents
+
         results = vector_db.similarity_search_with_score(query, k=k)
 
         relevant_docs = []
         for doc, score in results:
             # Lower score means higher similarity in Chroma
-            if score < 15:  # Adjust this threshold as needed
+            if score < 15:
                 relevant_docs.append(doc)
 
         context = "\n\n".join(content.page_content for content in relevant_docs)
@@ -79,8 +74,6 @@ async def find_relevant_context(query: str, k: int = 5) -> str:
 
 
 
-
-
 def generate_response(query: str, context: str) -> str:
     model = setup_genai()
     response = model.generate_content(context)
@@ -104,7 +97,7 @@ async def process_chat_message(message: str, context_files: Optional[List[str]] 
 
         response_text = generate_response(message, prompt)
         print(response_text)
-        # Create and return a ChatResponse object
+
         return ChatResponse(
             response=response_text,
         )

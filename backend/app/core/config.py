@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
     
     # static folder
-    WEB_FOLDER: str = "/Users/nhanvu/Documents/Learn code/rog-develop/frontend/build"
-    # WEB_FOLDER: str =r"D:\Python hoc\Tài liệu khóa học\Tài liệu khóa học\Training_RAG\rag-develop\frontend\build"
+    # WEB_FOLDER: str = "/Users/nhanvu/Documents/Learn code/rog-develop/frontend/build"
+    WEB_FOLDER: str =r"D:\Python hoc\Tài liệu khóa học\Tài liệu khóa học\Training_RAG\rag-develop\frontend\build"
     
     # Database settings
     DATABASE_URL: str = "sqlite:///./sql_app.db"
